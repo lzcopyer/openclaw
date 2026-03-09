@@ -1,0 +1,89 @@
+<mxfile host="drawio-cli" modified="2026-03-02T01:00:00.000Z" agent="drawio-cli" version="1.0" etag="template-flowchart" type="device">
+  <diagram name="Flowchart Template" id="flowchart-template">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        
+        <!-- Start -->
+        <mxCell id="start" value="START" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="360" y="40" width="80" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- Process 1 -->
+        <mxCell id="process1" value="Input Data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="350" y="160" width="100" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Process 2 -->
+        <mxCell id="process2" value="Process Data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="350" y="260" width="100" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Decision -->
+        <mxCell id="decision" value="Valid?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="340" y="360" width="120" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- Success Process -->
+        <mxCell id="success" value="Save Result" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="350" y="480" width="100" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Error Process -->
+        <mxCell id="error" value="Show Error" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="540" y="380" width="100" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- End -->
+        <mxCell id="end" value="END" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="360" y="580" width="80" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- Connections -->
+        <mxCell id="edge1" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="start" target="process1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="140" as="sourcePoint"/>
+            <mxPoint x="400" y="160" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="edge2" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="process1" target="process2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="240" as="sourcePoint"/>
+            <mxPoint x="400" y="260" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="edge3" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="process2" target="decision">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="340" as="sourcePoint"/>
+            <mxPoint x="400" y="360" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="edge4" value="Yes" style="endArrow=classic;html=1;" edge="1" parent="1" source="decision" target="success">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="460" as="sourcePoint"/>
+            <mxPoint x="400" y="480" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="edge5" value="No" style="endArrow=classic;html=1;" edge="1" parent="1" source="decision" target="error">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="480" y="400" as="sourcePoint"/>
+            <mxPoint x="540" y="400" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="edge6" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="success" target="end">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="560" as="sourcePoint"/>
+            <mxPoint x="400" y="580" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
