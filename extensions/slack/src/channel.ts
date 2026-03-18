@@ -22,11 +22,11 @@ import {
   resolveConfiguredFromRequiredCredentialStatuses,
   resolveSlackGroupRequireMention,
   resolveSlackGroupToolPolicy,
+  createSlackActions,
   type ChannelPlugin,
   type OpenClawConfig,
+  type SlackActionContext,
 } from "openclaw/plugin-sdk/slack";
-import type { SlackActionContext } from "../../../src/agents/tools/slack-actions.js";
-import { createSlackActions } from "../../../src/channels/plugins/slack.actions.js";
 import { buildPassiveProbedChannelStatusSummary } from "../../shared/channel-status-summary.js";
 import {
   listEnabledSlackAccounts,
@@ -417,6 +417,7 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
   },
   messaging: {
     normalizeTarget: normalizeSlackMessagingTarget,
+    resolveSessionTarget: ({ id }) => normalizeSlackMessagingTarget(`channel:${id}`),
     parseExplicitTarget: ({ raw }) => parseSlackExplicitTarget(raw),
     inferTargetChatType: ({ to }) => parseSlackExplicitTarget(to)?.chatType,
     resolveOutboundSessionRoute: async (params) => await resolveSlackOutboundSessionRoute(params),
