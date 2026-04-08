@@ -555,6 +555,44 @@ describe("dispatchCronDelivery — double-announce guard", () => {
     );
   });
 
+  it("surfaces structured direct delivery failures without retry when best-effort is disabled", async () => {
+    vi.mocked(countActiveDescendantRuns).mockReturnValue(0);
+    vi.mocked(isLikelyInterimCronMessage).mockReturnValue(false);
+    vi.mocked(deliverOutboundPayloads).mockRejectedValue(new Error("boom"));
+
+    const params = makeBaseParams({ synthesizedText: "Report attached." });
+    (params as Record<string, unknown>).deliveryPayloadHasStructuredContent = true;
+    const state = await dispatchCronDelivery(params);
+
+    expect(deliverOutboundPayloads).toHaveBeenCalledTimes(1);
+    expect(state.result).toEqual(
+      expect.objectContaining({
+        status: "error",
+        error: "Error: boom",
+        deliveryAttempted: true,
+      }),
+    );
+  });
+
+  it("ignores structured direct delivery failures when best-effort is enabled", async () => {
+    vi.mocked(countActiveDescendantRuns).mockReturnValue(0);
+    vi.mocked(isLikelyInterimCronMessage).mockReturnValue(false);
+    vi.mocked(deliverOutboundPayloads).mockRejectedValue(new Error("boom"));
+
+    const params = makeBaseParams({ synthesizedText: "Report attached." }) as Record<
+      string,
+      unknown
+    >;
+    params.deliveryPayloadHasStructuredContent = true;
+    params.deliveryBestEffort = true;
+    const state = await dispatchCronDelivery(params as never);
+
+    expect(deliverOutboundPayloads).toHaveBeenCalledTimes(1);
+    expect(state.result).toBeUndefined();
+    expect(state.delivered).toBe(false);
+    expect(state.deliveryAttempted).toBe(true);
+  });
+
   it("no delivery requested means deliveryAttempted stays false and no delivery is sent", async () => {
     const params = makeBaseParams({
       synthesizedText: "Task done.",
@@ -710,6 +748,31 @@ describe("dispatchCronDelivery — double-announce guard", () => {
       agentId: "main",
       sessionKey: "agent:main:telegram:123456",
     });
+  });
+
+  it("passes threaded telegram delivery through to the outbound adapter", async () => {
+    vi.mocked(countActiveDescendantRuns).mockReturnValue(0);
+    vi.mocked(isLikelyInterimCronMessage).mockReturnValue(false);
+
+    const params = makeBaseParams({ synthesizedText: "Final weather summary" });
+    params.resolvedDelivery = {
+      ...makeResolvedDelivery(),
+      mode: "implicit",
+      threadId: 42,
+    };
+
+    const state = await dispatchCronDelivery(params);
+
+    expect(state.result).toBeUndefined();
+    expect(state.delivered).toBe(true);
+    expect(deliverOutboundPayloads).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "telegram",
+        to: "123456",
+        threadId: 42,
+        payloads: [{ text: "Final weather summary" }],
+      }),
+    );
   });
 
   it("suppresses NO_REPLY payload with surrounding whitespace", async () => {
