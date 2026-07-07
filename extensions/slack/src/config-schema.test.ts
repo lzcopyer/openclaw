@@ -1,3 +1,4 @@
+// Slack tests cover config schema plugin behavior.
 import { describe, expect, it } from "vitest";
 import { SlackConfigSchema } from "../config-api.js";
 
@@ -10,7 +11,7 @@ function expectSlackConfigIssue(config: unknown, path: string) {
   const res = SlackConfigSchema.safeParse(config);
   expect(res.success).toBe(false);
   if (!res.success) {
-    expect(res.error.issues.some((issue) => issue.path.join(".").includes(path))).toBe(true);
+    expect(res.error.issues.map((issue) => issue.path.join("."))).toContain(path);
   }
 }
 
@@ -37,6 +38,51 @@ describe("slack config schema", () => {
     }
   });
 
+  it("rejects Slack Web API URL config overrides", () => {
+    const res = SlackConfigSchema.safeParse({
+      apiUrl: "http://127.0.0.1:49152/api/",
+      accounts: { ops: { apiUrl: "http://127.0.0.1:49153/api/" } },
+    });
+
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(
+        res.error.issues.some(
+          (issue) => issue.code === "unrecognized_keys" && issue.keys.includes("apiUrl"),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("accepts unfurl controls at root and account level", () => {
+    const res = SlackConfigSchema.safeParse({
+      unfurlLinks: false,
+      unfurlMedia: false,
+      accounts: {
+        ops: {
+          unfurlLinks: true,
+          unfurlMedia: false,
+        },
+      },
+    });
+
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.unfurlLinks).toBe(false);
+      expect(res.data.unfurlMedia).toBe(false);
+      expect(res.data.accounts?.ops?.unfurlLinks).toBe(true);
+      expect(res.data.accounts?.ops?.unfurlMedia).toBe(false);
+    }
+  });
+
+  it("rejects invalid unfurl control types", () => {
+    expectSlackConfigIssue({ unfurlLinks: "false" }, "unfurlLinks");
+    expectSlackConfigIssue(
+      { accounts: { ops: { unfurlMedia: "false" } } },
+      "accounts.ops.unfurlMedia",
+    );
+  });
+
   it('rejects dmPolicy="open" without allowFrom "*"', () => {
     expectSlackConfigIssue(
       {
@@ -61,6 +107,84 @@ describe("slack config schema", () => {
       userToken: "xoxp-any",
       userTokenReadOnly: false,
     });
+  });
+
+  it("accepts Socket Mode ping/pong transport tuning", () => {
+    expectSlackConfigValid({
+      mode: "socket",
+      socketMode: {
+        clientPingTimeout: 15_000,
+        serverPingTimeout: 45_000,
+        pingPongLoggingEnabled: true,
+      },
+      accounts: {
+        ops: {
+          socketMode: {
+            clientPingTimeout: 20_000,
+          },
+        },
+      },
+    });
+  });
+
+  it("accepts relay mode with a SecretInput auth token", () => {
+    expectSlackConfigValid({
+      mode: "relay",
+      botToken: "xoxb-any",
+      relay: {
+        url: "wss://router.example.com/gateway/ws",
+        authToken: { source: "env", provider: "default", id: "SLACK_RELAY_AUTH_TOKEN" },
+        gatewayId: "team-gateway",
+      },
+    });
+  });
+
+  it("requires every relay connection field", () => {
+    expectSlackConfigIssue({ mode: "relay" }, "relay.url");
+    expectSlackConfigIssue(
+      { mode: "relay", relay: { url: "wss://router.example.com/gateway/ws" } },
+      "relay.authToken",
+    );
+    expectSlackConfigIssue(
+      {
+        mode: "relay",
+        relay: {
+          url: "wss://router.example.com/gateway/ws",
+          authToken: "secret",
+        },
+      },
+      "relay.gatewayId",
+    );
+  });
+
+  it("rejects invalid Socket Mode ping/pong transport tuning", () => {
+    expectSlackConfigIssue(
+      {
+        socketMode: {
+          clientPingTimeout: 0,
+        },
+      },
+      "socketMode.clientPingTimeout",
+    );
+  });
+
+  it("accepts per-channel replyToMode", () => {
+    expectSlackConfigValid({
+      channels: {
+        C123: { requireMention: false, replyToMode: "off" },
+      },
+    });
+  });
+
+  it("rejects invalid per-channel replyToMode", () => {
+    expectSlackConfigIssue(
+      {
+        channels: {
+          C123: { replyToMode: "sometimes" },
+        },
+      },
+      "channels.C123.replyToMode",
+    );
   });
 
   it("accepts account-level user token config", () => {

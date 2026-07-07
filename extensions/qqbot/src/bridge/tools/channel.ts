@@ -1,9 +1,8 @@
+// Qqbot plugin module implements channel behavior.
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
-import { getAccessToken } from "../../engine/messaging/sender.js";
 import { ChannelApiSchema, executeChannelApi } from "../../engine/tools/channel-api.js";
 import type { ChannelApiParams } from "../../engine/tools/channel-api.js";
 import { listQQBotAccountIds, resolveQQBotAccount } from "../config.js";
-import { getBridgeLogger } from "../logger.js";
 
 /**
  * Register the QQ channel API proxy tool.
@@ -15,13 +14,11 @@ import { getBridgeLogger } from "../logger.js";
 export function registerChannelTool(api: OpenClawPluginApi): void {
   const cfg = api.config;
   if (!cfg) {
-    getBridgeLogger().debug?.("[qqbot-channel-api] No config available, skipping");
     return;
   }
 
   const accountIds = listQQBotAccountIds(cfg);
   if (accountIds.length === 0) {
-    getBridgeLogger().debug?.("[qqbot-channel-api] No QQBot accounts configured, skipping");
     return;
   }
 
@@ -29,7 +26,6 @@ export function registerChannelTool(api: OpenClawPluginApi): void {
   const account = resolveQQBotAccount(cfg, firstAccountId);
 
   if (!account.appId || !account.clientSecret) {
-    getBridgeLogger().debug?.("[qqbot-channel-api] Account not fully configured, skipping");
     return;
   }
 
@@ -39,6 +35,7 @@ export function registerChannelTool(api: OpenClawPluginApi): void {
       label: "QQBot Channel API",
       description:
         "Authenticated HTTP proxy for QQ Open Platform channel APIs. " +
+        "Use write and delete endpoints only after explicit user intent; DELETE requires confirmed=true, and bulk deletes require bulkConfirmed=true after confirming the exact target. " +
         "Common endpoints: " +
         "list guilds GET /users/@me/guilds | " +
         "list channels GET /guilds/{guild_id}/channels | " +
@@ -53,6 +50,7 @@ export function registerChannelTool(api: OpenClawPluginApi): void {
         "See the qqbot-channel skill for full endpoint details.",
       parameters: ChannelApiSchema,
       async execute(_toolCallId, params) {
+        const { getAccessToken } = await import("../../engine/messaging/sender.js");
         const accessToken = await getAccessToken(account.appId, account.clientSecret);
         return executeChannelApi(params as ChannelApiParams, { accessToken });
       },

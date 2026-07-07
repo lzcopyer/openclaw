@@ -1,3 +1,8 @@
+// Qqbot plugin module implements remind logic behavior.
+import { resolveExpiresAtMsFromDurationMs } from "openclaw/plugin-sdk/number-runtime";
+import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
+import { jsonResult as json } from "openclaw/plugin-sdk/tool-results";
+
 /**
  * QQBot reminder tool core logic.
  * QQBot 提醒工具核心逻辑。
@@ -22,16 +27,40 @@ export interface RemindParams {
   jobId?: string;
 }
 
+const QQBOT_DEFAULT_REMINDER_TIMEZONE = "Asia/Shanghai";
+
 /**
  * Context supplied by the bridge layer so the engine can remain free of
  * framework / AsyncLocalStorage dependencies. `fallbackTo` and
  * `fallbackAccountId` are consulted only when the corresponding AI-supplied
  * parameter is missing.
  */
-export interface RemindExecuteContext {
+interface RemindExecuteContext {
   fallbackTo?: string;
   fallbackAccountId?: string;
 }
+
+export type RemindCronAction =
+  | { action: "list" }
+  | { action: "remove"; jobId: string }
+  | {
+      action: "add";
+      job: ReturnType<typeof buildOnceJob>["job"] | ReturnType<typeof buildCronJob>["job"];
+    };
+
+type RemindCronScheduler = (params: RemindCronAction) => Promise<unknown>;
+
+type RemindCronPlan =
+  | {
+      ok: true;
+      action: RemindParams["action"];
+      cronAction: RemindCronAction;
+      summary?: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 
 /**
  * JSON Schema for AI tool parameters (used by framework registration).
@@ -43,7 +72,7 @@ export const RemindSchema = {
     action: {
       type: "string",
       description:
-        "Action type. add=create a reminder, list=show reminders, remove=delete a reminder.",
+        "Action type. add=create a reminder only after explicit user request, list=show reminders, remove=delete a reminder by confirmed job ID.",
       enum: ["add", "list", "remove"],
     },
     content: {
@@ -65,11 +94,12 @@ export const RemindSchema = {
         '1. Relative time, for example "5m", "1h", "1h30m", or "2d"\n' +
         '2. Cron expression, for example "0 8 * * *" or "0 9 * * 1-5"\n' +
         "Values containing spaces are treated as cron expressions; everything else is treated as a one-shot relative delay.\n" +
-        "Required when action=add.",
+        "Required when action=add. Ask for clarification before scheduling if the time is ambiguous.",
     },
     timezone: {
       type: "string",
-      description: 'Timezone used for cron reminders. Defaults to "Asia/Shanghai".',
+      description:
+        "Optional IANA timezone used for cron reminders. Include it when the user provides or confirms a timezone; if omitted, QQBot preserves its existing default timezone.",
     },
     name: {
       type: "string",
@@ -92,18 +122,23 @@ export const RemindSchema = {
  * @returns Milliseconds or null if unparseable.
  */
 export function parseRelativeTime(timeStr: string): number | null {
-  const s = timeStr.toLowerCase();
+  const s = timeStr.trim().toLowerCase();
   if (/^\d+$/.test(s)) {
-    return parseInt(s, 10) * 60_000;
+    return Number.parseInt(s, 10) * 60_000;
   }
 
   let totalMs = 0;
   let matched = false;
-  const regex = /(\d+(?:\.\d+)?)\s*(d|h|m|s)/g;
+  let consumed = 0;
+  const regex = /(\d+(?:\.\d+)?)\s*(d|h|m|s)\s*/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(s)) !== null) {
+    if (match.index !== consumed) {
+      return null;
+    }
     matched = true;
-    const value = parseFloat(match[1]);
+    consumed = regex.lastIndex;
+    const value = Number.parseFloat(match[1]);
     const unit = match[2];
     switch (unit) {
       case "d":
@@ -120,7 +155,7 @@ export function parseRelativeTime(timeStr: string): number | null {
         break;
     }
   }
-  return matched ? Math.round(totalMs) : null;
+  return matched && consumed === s.length ? Math.round(totalMs) : null;
 }
 
 /**
@@ -141,7 +176,7 @@ export function isCronExpression(timeStr: string): boolean {
  */
 export function generateJobName(content: string): string {
   const trimmed = content.trim();
-  const short = trimmed.length > 20 ? `${trimmed.slice(0, 20)}…` : trimmed;
+  const short = trimmed.length > 20 ? `${truncateUtf16Safe(trimmed, 20)}…` : trimmed;
   return `Reminder: ${short}`;
 }
 
@@ -156,25 +191,24 @@ export function buildReminderPrompt(content: string): string {
 }
 
 /** Build cron job params for a one-shot delayed reminder. */
-export function buildOnceJob(params: RemindParams, delayMs: number, to: string, accountId: string) {
-  const atMs = Date.now() + delayMs;
+function buildOnceJob(params: RemindParams, atMs: number, to: string, accountId: string) {
   const content = params.content!;
   const name = params.name || generateJobName(content);
   return {
-    action: "add",
+    action: "add" as const,
     job: {
       name,
-      schedule: { kind: "at", atMs },
-      sessionTarget: "isolated",
-      wakeMode: "now",
+      schedule: { kind: "at" as const, atMs },
+      sessionTarget: "isolated" as const,
+      wakeMode: "now" as const,
       deleteAfterRun: true,
       payload: {
-        kind: "agentTurn",
+        kind: "agentTurn" as const,
         message: buildReminderPrompt(content),
       },
       delivery: {
-        mode: "announce",
-        channel: "qqbot",
+        mode: "announce" as const,
+        channel: "qqbot" as const,
         to,
         accountId,
       },
@@ -183,24 +217,24 @@ export function buildOnceJob(params: RemindParams, delayMs: number, to: string, 
 }
 
 /** Build cron job params for a recurring cron reminder. */
-export function buildCronJob(params: RemindParams, to: string, accountId: string) {
+function buildCronJob(params: RemindParams, to: string, accountId: string) {
   const content = params.content!;
   const name = params.name || generateJobName(content);
-  const tz = params.timezone || "Asia/Shanghai";
+  const tz = params.timezone || QQBOT_DEFAULT_REMINDER_TIMEZONE;
   return {
-    action: "add",
+    action: "add" as const,
     job: {
       name,
-      schedule: { kind: "cron", expr: params.time!.trim(), tz },
-      sessionTarget: "isolated",
-      wakeMode: "now",
+      schedule: { kind: "cron" as const, expr: params.time!.trim(), tz },
+      sessionTarget: "isolated" as const,
+      wakeMode: "now" as const,
       payload: {
-        kind: "agentTurn",
+        kind: "agentTurn" as const,
         message: buildReminderPrompt(content),
       },
       delivery: {
-        mode: "announce",
-        channel: "qqbot",
+        mode: "announce" as const,
+        channel: "qqbot" as const,
         to,
         accountId,
       },
@@ -226,86 +260,100 @@ export function formatDelay(ms: number): string {
   return `${hours}h${minutes}m`;
 }
 
-function json(data: unknown) {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-    details: data,
-  };
+function formatSchedulerError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Execute the reminder tool logic.
- * 执行提醒工具逻辑。
- *
- * Validates params, parses time, and returns a structured result
- * containing cron job params that the framework shell passes back
- * as the tool output.
- *
- * When the AI omits `to` / `accountId`, the bridge layer can supply
- * `ctx.fallbackTo` / `ctx.fallbackAccountId` (typically resolved from
- * the request-scoped AsyncLocalStorage) to fill them in.
- */
-export function executeRemind(params: RemindParams, ctx: RemindExecuteContext = {}) {
+export function prepareRemindCronAction(
+  params: RemindParams,
+  ctx: RemindExecuteContext = {},
+): RemindCronPlan {
   if (params.action === "list") {
-    return json({
-      _instruction: "Use the cron tool immediately with the following parameters.",
-      cronParams: { action: "list" },
-    });
+    return { ok: true, action: "list", cronAction: { action: "list" } };
   }
 
   if (params.action === "remove") {
     if (!params.jobId) {
-      return json({
-        error: "jobId is required when action=remove. Use action=list first.",
-      });
+      return { ok: false, error: "jobId is required when action=remove. Use action=list first." };
     }
-    return json({
-      _instruction: "Use the cron tool immediately with the following parameters.",
-      cronParams: { action: "remove", jobId: params.jobId },
-    });
+    return {
+      ok: true,
+      action: "remove",
+      cronAction: { action: "remove", jobId: params.jobId },
+    };
   }
 
   if (!params.content) {
-    return json({ error: "content is required when action=add" });
+    return { ok: false, error: "content is required when action=add" };
   }
   const resolvedTo = params.to || ctx.fallbackTo;
   if (!resolvedTo) {
-    return json({
+    return {
+      ok: false,
       error:
         "Unable to determine delivery target for action=add. " +
         "The reminder can only be scheduled from within an active conversation.",
-    });
+    };
   }
   if (!params.time) {
-    return json({ error: "time is required when action=add" });
+    return { ok: false, error: "time is required when action=add" };
   }
   const resolvedAccountId = ctx.fallbackAccountId || "default";
 
   if (isCronExpression(params.time)) {
-    return json({
-      _instruction:
-        "Use the cron tool immediately with the following parameters. " +
-        "Pass cronParams verbatim — do not modify or omit any field, especially delivery.accountId — then tell the user the reminder has been scheduled.",
-      cronParams: buildCronJob(params, resolvedTo, resolvedAccountId),
-      summary: `⏰ Recurring reminder: "${params.content}" (${params.time}, tz=${params.timezone || "Asia/Shanghai"})`,
-    });
+    return {
+      ok: true,
+      action: "add",
+      cronAction: buildCronJob(params, resolvedTo, resolvedAccountId),
+      summary: `⏰ Recurring reminder: "${params.content}" (${params.time}, tz=${params.timezone || QQBOT_DEFAULT_REMINDER_TIMEZONE})`,
+    };
   }
 
   const delayMs = parseRelativeTime(params.time);
   if (delayMs == null) {
-    return json({
+    return {
+      ok: false,
       error: `Could not parse time format: ${params.time}. Use values like 5m, 1h, 1h30m, or a cron expression.`,
-    });
+    };
   }
   if (delayMs < 30_000) {
-    return json({ error: "Reminder delay must be at least 30 seconds" });
+    return { ok: false, error: "Reminder delay must be at least 30 seconds" };
+  }
+  const atMs = resolveExpiresAtMsFromDurationMs(delayMs);
+  if (atMs === undefined) {
+    return { ok: false, error: "Reminder time is outside the supported Date range" };
   }
 
-  return json({
-    _instruction:
-      "Use the cron tool immediately with the following parameters. " +
-      "Pass cronParams verbatim — do not modify or omit any field, especially delivery.accountId — then tell the user the reminder has been scheduled.",
-    cronParams: buildOnceJob(params, delayMs, resolvedTo, resolvedAccountId),
+  return {
+    ok: true,
+    action: "add",
+    cronAction: buildOnceJob(params, atMs, resolvedTo, resolvedAccountId),
     summary: `⏰ Reminder in ${formatDelay(delayMs)}: "${params.content}"`,
-  });
+  };
+}
+
+export async function executeScheduledRemind(
+  params: RemindParams,
+  ctx: RemindExecuteContext,
+  scheduler: RemindCronScheduler,
+) {
+  const plan = prepareRemindCronAction(params, ctx);
+  if (!plan.ok) {
+    return json({ error: plan.error });
+  }
+
+  try {
+    const cronResult = await scheduler(plan.cronAction);
+    return json({
+      ok: true,
+      action: plan.action,
+      summary: plan.summary,
+      cronResult,
+    });
+  } catch (error) {
+    return json({
+      error: `Failed to run Gateway cron action: ${formatSchedulerError(error)}`,
+      action: plan.action,
+    });
+  }
 }

@@ -1,6 +1,8 @@
+// Feishu plugin module implements monitor.comment behavior.
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+import { asBoolean as readBoolean } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { sliceUtf16Safe, truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
 import type { ClawdbotConfig } from "../runtime-api.js";
-import { resolveFeishuAccount } from "./accounts.js";
 import { raceWithTimeoutAndAbort } from "./async.js";
 import { createFeishuClient } from "./client.js";
 import {
@@ -53,6 +55,7 @@ type ResolveDriveCommentEventParams = {
   cfg: ClawdbotConfig;
   accountId: string;
   event: FeishuDriveCommentNoticeEvent;
+  account?: ResolvedFeishuAccount;
   botOpenId?: string;
   createClient?: (account: ResolvedFeishuAccount) => FeishuRequestClient;
   verificationTimeoutMs?: number;
@@ -60,7 +63,7 @@ type ResolveDriveCommentEventParams = {
   waitMs?: (ms: number) => Promise<void>;
 };
 
-export type ResolvedDriveCommentEventTurn = {
+type ResolvedDriveCommentEventTurn = {
   eventId: string;
   messageId: string;
   commentId: string;
@@ -163,10 +166,6 @@ type ResolvedWholeCommentTimelineEntry = {
   content: ParsedCommentContent;
 };
 
-function readBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
-}
-
 function safeJsonStringify(value: unknown): string {
   try {
     return JSON.stringify(value);
@@ -185,7 +184,9 @@ function truncatePromptText(
   if (!normalized) {
     return "";
   }
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
+  return normalized.length > maxLength
+    ? `${sliceUtf16Safe(normalized, 0, maxLength - 1)}…`
+    : normalized;
 }
 
 function formatPromptTextValue(text: string | undefined): string {
@@ -334,7 +335,7 @@ async function resolveParsedCommentContent(params: {
               resolvedObjToken: objToken,
             };
           })
-          .catch((error) => {
+          .catch((error: unknown) => {
             params.logger?.(
               `feishu[${params.accountId}]: wiki link resolution threw token=${link.wikiNodeToken} error=${formatErrorMessage(error)}`,
             );
@@ -364,7 +365,9 @@ async function resolveParsedCommentContent(params: {
 }
 
 async function delayMs(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function buildDriveCommentTargetUrl(params: {
@@ -486,7 +489,7 @@ async function requestFeishuOpenApi<T>(params: {
     { timeoutMs: params.timeoutMs },
   )
     .then((resolved) => (resolved.status === "resolved" ? resolved.value : null))
-    .catch((error) => {
+    .catch((error: unknown) => {
       params.logger?.(`${params.errorLabel}: ${formatErrorDetails(error)}`);
       return null;
     });
@@ -1224,8 +1227,9 @@ async function resolveDriveCommentEventCore(params: ResolveDriveCommentEventPara
     cfg,
     accountId,
     event,
+    account,
     botOpenId,
-    createClient = (account) => createFeishuClient(account) as FeishuRequestClient,
+    createClient,
     verificationTimeoutMs = FEISHU_COMMENT_VERIFY_TIMEOUT_MS,
     logger,
     waitMs = delayMs,
@@ -1262,8 +1266,11 @@ async function resolveDriveCommentEventCore(params: ResolveDriveCommentEventPara
     return null;
   }
 
-  const account = resolveFeishuAccount({ cfg, accountId });
-  const client = createClient(account);
+  const client = createClient
+    ? createClient(account ?? ({ accountId } as ResolvedFeishuAccount))
+    : (createFeishuClient(
+        (await import("./accounts.js")).resolveFeishuAccount({ cfg, accountId }),
+      ) as FeishuRequestClient);
   const context = await fetchDriveCommentContext({
     client,
     fileToken,
@@ -1357,7 +1364,7 @@ export async function resolveDriveCommentEventTurn(
     nearestBotWholeCommentAfter: resolved.context.nearestBotWholeCommentAfter,
     nearestBotWholeCommentBefore: resolved.context.nearestBotWholeCommentBefore,
   });
-  const preview = prompt.replace(/\s+/g, " ").slice(0, 160);
+  const preview = truncateUtf16Safe(prompt.replace(/\s+/g, " "), 160);
   return {
     eventId: resolved.eventId,
     messageId: `drive-comment:${resolved.eventId}`,

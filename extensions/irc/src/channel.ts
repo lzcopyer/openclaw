@@ -1,3 +1,4 @@
+// Irc plugin module implements channel behavior.
 import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
 import { formatNormalizedAllowFromEntries } from "openclaw/plugin-sdk/allow-from";
 import {
@@ -14,6 +15,7 @@ import {
   createChannelDirectoryAdapter,
   createResolvedDirectoryEntriesLister,
 } from "openclaw/plugin-sdk/directory-runtime";
+import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 import {
   createComputedAccountStatusAdapter,
   createDefaultChannelRuntimeState,
@@ -33,6 +35,7 @@ import {
 import { IrcChannelConfigSchema } from "./config-schema.js";
 import { collectIrcMutableAllowlistWarnings } from "./doctor.js";
 import { startIrcGatewayAccount } from "./gateway.js";
+import { ircMessageAdapter } from "./message-adapter.js";
 import {
   isChannelTarget,
   looksLikeIrcTargetId,
@@ -60,14 +63,7 @@ const meta = {
   markdownCapable: true,
 };
 
-type IrcChannelRuntimeModule = typeof import("./channel-runtime.js");
-
-let ircChannelRuntimePromise: Promise<IrcChannelRuntimeModule> | undefined;
-
-async function loadIrcChannelRuntime(): Promise<IrcChannelRuntimeModule> {
-  ircChannelRuntimePromise ??= import("./channel-runtime.js");
-  return await ircChannelRuntimePromise;
-}
+const loadIrcChannelRuntime = createLazyRuntimeModule(() => import("./channel-runtime.js"));
 
 function normalizePairingTarget(raw: string): string {
   const normalized = normalizeIrcAllowEntry(raw);
@@ -233,12 +229,14 @@ export const ircPlugin: ChannelPlugin<ResolvedIrcAccount, IrcProbe> = createChat
       },
     },
     messaging: {
+      targetPrefixes: ["irc"],
       normalizeTarget: normalizeIrcMessagingTarget,
       targetResolver: {
         looksLikeId: looksLikeIrcTargetId,
         hint: "<#channel|nick>",
       },
     },
+    message: ircMessageAdapter,
     resolver: {
       resolveTargets: async ({ inputs, kind }) => {
         return inputs.map((input) => {

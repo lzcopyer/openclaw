@@ -1,15 +1,12 @@
+// Matrix plugin module implements session route behavior.
 import { normalizeAccountId } from "openclaw/plugin-sdk/account-id";
 import {
   buildChannelOutboundSessionRoute,
   buildThreadAwareOutboundSessionRoute,
   type ChannelOutboundSessionRouteParams,
 } from "openclaw/plugin-sdk/channel-core";
-import {
-  loadSessionStore,
-  resolveSessionStoreEntry,
-  resolveStorePath,
-} from "openclaw/plugin-sdk/config-runtime";
 import { parseThreadSessionSuffix } from "openclaw/plugin-sdk/routing";
+import { getSessionEntry, resolveStorePath } from "openclaw/plugin-sdk/session-store-runtime";
 import { resolveMatrixAccountConfig } from "./matrix/account-config.js";
 import { resolveDefaultMatrixAccountId } from "./matrix/accounts.js";
 import { resolveMatrixStoredSessionMeta } from "./matrix/session-store-metadata.js";
@@ -50,11 +47,10 @@ function resolveMatrixCurrentDmRoomId(params: {
     const storePath = resolveStorePath(params.cfg.session?.store, {
       agentId: params.agentId,
     });
-    const store = loadSessionStore(storePath);
-    const existing = resolveSessionStoreEntry({
-      store,
+    const existing = getSessionEntry({
+      storePath,
       sessionKey,
-    }).existing;
+    });
     const currentSession = resolveMatrixStoredSessionMeta(existing);
     if (!currentSession) {
       return undefined;

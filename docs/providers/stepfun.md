@@ -6,9 +6,7 @@ read_when:
 title: "StepFun"
 ---
 
-# StepFun
-
-OpenClaw includes a bundled StepFun provider plugin with two provider ids:
+StepFun ships as an external official plugin (`@openclaw/stepfun-provider`) with two provider ids:
 
 - `stepfun` for the standard endpoint
 - `stepfun-plan` for the Step Plan endpoint
@@ -16,6 +14,13 @@ OpenClaw includes a bundled StepFun provider plugin with two provider ids:
 <Warning>
 Standard and Step Plan are **separate providers** with different endpoints and model ref prefixes (`stepfun/...` vs `stepfun-plan/...`). Use a China key with the `.com` endpoints and a global key with the `.ai` endpoints.
 </Warning>
+
+## Install plugin
+
+```bash
+openclaw plugins install @openclaw/stepfun-provider
+openclaw gateway restart
+```
 
 ## Region and endpoint overview
 
@@ -26,7 +31,7 @@ Standard and Step Plan are **separate providers** with different endpoints and m
 
 Auth env var: `STEPFUN_API_KEY`
 
-## Built-in catalogs
+## Built-in catalog
 
 Standard (`stepfun`):
 
@@ -43,25 +48,23 @@ Step Plan (`stepfun-plan`):
 
 ## Getting started
 
-Choose your provider surface and follow the setup steps.
-
 <Tabs>
   <Tab title="Standard">
-    **Best for:** general-purpose use via the standard StepFun endpoint.
+    Best for general-purpose use via the standard StepFun endpoint.
 
     <Steps>
       <Step title="Choose your endpoint region">
-        | Auth choice                      | Endpoint                         | Region        |
-        | -------------------------------- | -------------------------------- | ------------- |
-        | `stepfun-standard-api-key-intl`  | `https://api.stepfun.ai/v1`     | International |
-        | `stepfun-standard-api-key-cn`    | `https://api.stepfun.com/v1`    | China         |
+        | Auth choice                    | Endpoint                     | Region        |
+        | -------------------------------- | ----------------------------- | -------------- |
+        | `stepfun-standard-api-key-intl` | `https://api.stepfun.ai/v1`  | International |
+        | `stepfun-standard-api-key-cn`   | `https://api.stepfun.com/v1` | China          |
       </Step>
       <Step title="Run onboarding">
         ```bash
         openclaw onboard --auth-choice stepfun-standard-api-key-intl
         ```
 
-        Or for the China endpoint:
+        China endpoint:
 
         ```bash
         openclaw onboard --auth-choice stepfun-standard-api-key-cn
@@ -80,28 +83,26 @@ Choose your provider surface and follow the setup steps.
       </Step>
     </Steps>
 
-    ### Model refs
-
-    - Default model: `stepfun/step-3.5-flash`
+    Default model: `stepfun/step-3.5-flash`
 
   </Tab>
 
   <Tab title="Step Plan">
-    **Best for:** Step Plan reasoning endpoint.
+    Best for the Step Plan reasoning endpoint.
 
     <Steps>
       <Step title="Choose your endpoint region">
-        | Auth choice                  | Endpoint                                | Region        |
-        | ---------------------------- | --------------------------------------- | ------------- |
-        | `stepfun-plan-api-key-intl`  | `https://api.stepfun.ai/step_plan/v1`  | International |
-        | `stepfun-plan-api-key-cn`    | `https://api.stepfun.com/step_plan/v1` | China         |
+        | Auth choice                 | Endpoint                                | Region        |
+        | ------------------------------ | ------------------------------------------ | -------------- |
+        | `stepfun-plan-api-key-intl` | `https://api.stepfun.ai/step_plan/v1`  | International |
+        | `stepfun-plan-api-key-cn`   | `https://api.stepfun.com/step_plan/v1` | China          |
       </Step>
       <Step title="Run onboarding">
         ```bash
         openclaw onboard --auth-choice stepfun-plan-api-key-intl
         ```
 
-        Or for the China endpoint:
+        China endpoint:
 
         ```bash
         openclaw onboard --auth-choice stepfun-plan-api-key-cn
@@ -120,15 +121,15 @@ Choose your provider surface and follow the setup steps.
       </Step>
     </Steps>
 
-    ### Model refs
-
-    - Default model: `stepfun-plan/step-3.5-flash`
-    - Alternate model: `stepfun-plan/step-3.5-flash-2603`
+    Default model: `stepfun-plan/step-3.5-flash`
+    Alternate model: `stepfun-plan/step-3.5-flash-2603`
 
   </Tab>
 </Tabs>
 
-## Advanced
+A single auth flow writes region-matched profiles for both `stepfun` and `stepfun-plan`, so both surfaces are discovered together after one onboarding run.
+
+## Advanced configuration
 
 <AccordionGroup>
   <Accordion title="Full config: Standard provider">
@@ -201,16 +202,11 @@ Choose your provider surface and follow the setup steps.
   </Accordion>
 
   <Accordion title="Notes">
-    - The provider is bundled with OpenClaw, so there is no separate plugin install step.
     - `step-3.5-flash-2603` is currently exposed only on `stepfun-plan`.
-    - A single auth flow writes region-matched profiles for both `stepfun` and `stepfun-plan`, so both surfaces can be discovered together.
     - Use `openclaw models list` and `openclaw models set <provider/model>` to inspect or switch models.
+
   </Accordion>
 </AccordionGroup>
-
-<Note>
-For the broader provider overview, see [Model providers](/concepts/model-providers).
-</Note>
 
 ## Related
 
@@ -221,7 +217,7 @@ For the broader provider overview, see [Model providers](/concepts/model-provide
   <Card title="Configuration reference" href="/gateway/configuration-reference" icon="gear">
     Full config schema for providers, models, and plugins.
   </Card>
-  <Card title="Model selection" href="/concepts/models" icon="brain">
+  <Card title="Models CLI" href="/concepts/models" icon="brain">
     How to choose and configure models.
   </Card>
   <Card title="StepFun Platform" href="https://platform.stepfun.com" icon="globe">

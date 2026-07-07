@@ -1,6 +1,8 @@
+// Qa Matrix plugin module implements scenario runtime restart behavior.
 import {
   MATRIX_QA_HOMESERVER_ROOM_KEY,
   MATRIX_QA_RESTART_ROOM_KEY,
+  MATRIX_QA_STALE_SYNC_ROOM_KEY,
   resolveMatrixQaScenarioRoomId,
 } from "./scenario-catalog.js";
 import {
@@ -11,8 +13,8 @@ import {
   isMatrixQaExactMarkerReply,
   assertTopLevelReplyArtifact,
   advanceMatrixQaActorCursor,
-  NO_REPLY_WINDOW_MS,
   primeMatrixQaDriverScenarioClient,
+  resolveMatrixQaNoReplyWindowMs,
   runAssertedDriverTopLevelScenario,
   type MatrixQaScenarioContext,
 } from "./scenario-runtime-shared.js";
@@ -51,75 +53,6 @@ export async function runHomeserverRestartResumeScenario(context: MatrixQaScenar
       "transport interruption: homeserver-restart",
       `driver event: ${resumed.driverEventId}`,
       ...buildMatrixReplyDetails("reply", resumed.reply),
-    ].join("\n"),
-  } satisfies MatrixQaScenarioExecution;
-}
-
-export async function runRestartResumeScenario(context: MatrixQaScenarioContext) {
-  if (!context.restartGateway) {
-    throw new Error("Matrix restart scenario requires a gateway restart callback");
-  }
-  const roomId = resolveMatrixQaScenarioRoomId(context, MATRIX_QA_RESTART_ROOM_KEY);
-  await context.restartGateway();
-  const result = await runAssertedDriverTopLevelScenario({
-    context,
-    label: "post-restart reply",
-    roomId,
-    tokenPrefix: "MATRIX_QA_RESTART",
-  });
-  return {
-    artifacts: {
-      driverEventId: result.driverEventId,
-      reply: result.reply,
-      restartSignal: "SIGUSR1",
-      roomId,
-      token: result.token,
-    },
-    details: [
-      `room id: ${roomId}`,
-      "restart signal: SIGUSR1",
-      `post-restart driver event: ${result.driverEventId}`,
-      ...buildMatrixReplyDetails("reply", result.reply),
-    ].join("\n"),
-  } satisfies MatrixQaScenarioExecution;
-}
-
-export async function runPostRestartRoomContinueScenario(context: MatrixQaScenarioContext) {
-  if (!context.restartGateway) {
-    throw new Error("Matrix post-restart continuity scenario requires a gateway restart callback");
-  }
-  const roomId = resolveMatrixQaScenarioRoomId(context, MATRIX_QA_RESTART_ROOM_KEY);
-  await context.restartGateway();
-  const first = await runAssertedDriverTopLevelScenario({
-    context,
-    label: "first post-restart reply",
-    roomId,
-    tokenPrefix: "MATRIX_QA_RESTART_FIRST",
-  });
-  const second = await runAssertedDriverTopLevelScenario({
-    context,
-    label: "second post-restart reply",
-    roomId,
-    tokenPrefix: "MATRIX_QA_RESTART_SECOND",
-  });
-  return {
-    artifacts: {
-      firstDriverEventId: first.driverEventId,
-      firstReply: first.reply,
-      firstToken: first.token,
-      restartSignal: "SIGUSR1",
-      roomId,
-      secondDriverEventId: second.driverEventId,
-      secondReply: second.reply,
-      secondToken: second.token,
-    },
-    details: [
-      `room id: ${roomId}`,
-      "restart signal: SIGUSR1",
-      `first post-restart driver event: ${first.driverEventId}`,
-      ...buildMatrixReplyDetails("first reply", first.reply),
-      `second post-restart driver event: ${second.driverEventId}`,
-      ...buildMatrixReplyDetails("second reply", second.reply),
     ].join("\n"),
   } satisfies MatrixQaScenarioExecution;
 }
@@ -253,7 +186,7 @@ async function assertNoRestartReplayDuplicate(params: {
         token: params.replayToken,
       }),
     roomId: params.roomId,
-    timeoutMs: Math.min(NO_REPLY_WINDOW_MS, params.context.timeoutMs),
+    timeoutMs: resolveMatrixQaNoReplyWindowMs(params.context.timeoutMs),
   });
   if (duplicate.matched) {
     throw new Error(
@@ -276,64 +209,6 @@ async function assertNoRestartReplayDuplicate(params: {
   });
 }
 
-export async function runRestartReplayDedupeScenario(context: MatrixQaScenarioContext) {
-  if (!context.restartGateway) {
-    throw new Error("Matrix restart replay dedupe scenario requires a gateway restart callback");
-  }
-  const roomId = resolveMatrixQaScenarioRoomId(context, MATRIX_QA_RESTART_ROOM_KEY);
-  const { client, firstMatched, firstReply, replayDriverEventId, replayToken, startSince } =
-    await sendAndAssertRestartReplayReply({
-      context,
-      replyLabel: "first replay-dedupe reply",
-      roomId,
-      tokenPrefix: "MATRIX_QA_REPLAY_DEDUPE",
-    });
-
-  await context.restartGateway();
-
-  await assertNoRestartReplayDuplicate({
-    client,
-    context,
-    errorDetails: [`original driver event: ${replayDriverEventId}`],
-    errorTitle: "Matrix restart replayed an already handled event",
-    firstMatchedSince: firstMatched.since,
-    firstReply,
-    replayToken,
-    roomId,
-    startSince,
-  });
-
-  const postRestart = await runAssertedDriverTopLevelScenario({
-    context,
-    label: "fresh post-restart reply",
-    roomId,
-    tokenPrefix: "MATRIX_QA_REPLAY_DEDUPE_FRESH",
-  });
-
-  return {
-    artifacts: {
-      duplicateWindowMs: Math.min(NO_REPLY_WINDOW_MS, context.timeoutMs),
-      firstDriverEventId: replayDriverEventId,
-      firstReply,
-      firstToken: replayToken,
-      freshDriverEventId: postRestart.driverEventId,
-      freshReply: postRestart.reply,
-      freshToken: postRestart.token,
-      restartSignal: "SIGUSR1",
-      roomId,
-    },
-    details: [
-      `room id: ${roomId}`,
-      "restart signal: SIGUSR1",
-      `first driver event: ${replayDriverEventId}`,
-      ...buildMatrixReplyDetails("first reply", firstReply),
-      `duplicate replay window: ${Math.min(NO_REPLY_WINDOW_MS, context.timeoutMs)}ms`,
-      `fresh post-restart driver event: ${postRestart.driverEventId}`,
-      ...buildMatrixReplyDetails("fresh reply", postRestart.reply),
-    ].join("\n"),
-  } satisfies MatrixQaScenarioExecution;
-}
-
 export async function runStaleSyncReplayDedupeScenario(context: MatrixQaScenarioContext) {
   if (!context.restartGatewayAfterStateMutation) {
     throw new Error(
@@ -344,7 +219,7 @@ export async function runStaleSyncReplayDedupeScenario(context: MatrixQaScenario
     throw new Error("Matrix stale sync replay dedupe scenario requires a gateway state directory");
   }
   const stateDir = context.gatewayStateDir;
-  const roomId = resolveMatrixQaScenarioRoomId(context, MATRIX_QA_RESTART_ROOM_KEY);
+  const roomId = resolveMatrixQaScenarioRoomId(context, MATRIX_QA_STALE_SYNC_ROOM_KEY);
   const syncStore = await waitForMatrixSyncStoreWithCursor({
     context,
     stateDir,
@@ -372,6 +247,8 @@ export async function runStaleSyncReplayDedupeScenario(context: MatrixQaScenario
     await rewriteMatrixSyncStoreCursor({
       cursor: staleCursor,
       pathname: syncStore.pathname,
+      source: syncStore.source,
+      stateKey: syncStore.stateKey,
     });
   });
 
@@ -400,7 +277,7 @@ export async function runStaleSyncReplayDedupeScenario(context: MatrixQaScenario
   return {
     artifacts: {
       dedupeCommitObserved: true,
-      duplicateWindowMs: Math.min(NO_REPLY_WINDOW_MS, context.timeoutMs),
+      duplicateWindowMs: resolveMatrixQaNoReplyWindowMs(context.timeoutMs),
       firstDriverEventId: replayDriverEventId,
       firstReply,
       firstToken: replayToken,
@@ -417,7 +294,7 @@ export async function runStaleSyncReplayDedupeScenario(context: MatrixQaScenario
       `stale sync cursor: ${staleCursor}`,
       `first driver event: ${replayDriverEventId}`,
       ...buildMatrixReplyDetails("first reply", firstReply),
-      `duplicate replay window: ${Math.min(NO_REPLY_WINDOW_MS, context.timeoutMs)}ms`,
+      `duplicate replay window: ${resolveMatrixQaNoReplyWindowMs(context.timeoutMs)}ms`,
       `fresh post-restart driver event: ${postRestart.driverEventId}`,
       ...buildMatrixReplyDetails("fresh reply", postRestart.reply),
     ].join("\n"),

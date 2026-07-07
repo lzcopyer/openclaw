@@ -6,10 +6,8 @@ read_when:
 title: "Synthetic"
 ---
 
-# Synthetic
-
 [Synthetic](https://synthetic.new) exposes Anthropic-compatible endpoints.
-OpenClaw registers it as the `synthetic` provider and uses the Anthropic
+OpenClaw bundles it as the `synthetic` provider and uses the Anthropic
 Messages API.
 
 | Property | Value                                 |
@@ -23,8 +21,8 @@ Messages API.
 
 <Steps>
   <Step title="Get an API key">
-    Obtain a `SYNTHETIC_API_KEY` from your Synthetic account, or let the
-    onboarding wizard prompt you for one.
+    Get a `SYNTHETIC_API_KEY` from your Synthetic account, or let onboarding
+    prompt you for one.
   </Step>
   <Step title="Run onboarding">
     ```bash
@@ -32,8 +30,8 @@ Messages API.
     ```
   </Step>
   <Step title="Verify the default model">
-    After onboarding the default model is set to:
-    ```
+    Onboarding sets the default model to:
+    ```text
     synthetic/hf:MiniMaxAI/MiniMax-M2.5
     ```
   </Step>
@@ -80,7 +78,7 @@ changes its base URL, override `models.providers.synthetic.baseUrl`.
 }
 ```
 
-## Model catalog
+## Built-in catalog
 
 All Synthetic models use cost `0` (input/output/cache).
 
@@ -117,12 +115,12 @@ account.
 <AccordionGroup>
   <Accordion title="Model allowlist">
     If you enable a model allowlist (`agents.defaults.models`), add every
-    Synthetic model you plan to use. Models not in the allowlist will be hidden
+    Synthetic model you plan to use. Models not in the allowlist are hidden
     from the agent.
   </Accordion>
 
   <Accordion title="Base URL override">
-    If Synthetic changes its API endpoint, override the base URL in your config:
+    If Synthetic changes its API endpoint, override the base URL:
 
     ```json5
     {
@@ -136,7 +134,7 @@ account.
     }
     ```
 
-    Remember that OpenClaw appends `/v1` automatically.
+    OpenClaw still appends `/v1` automatically.
 
   </Accordion>
 </AccordionGroup>

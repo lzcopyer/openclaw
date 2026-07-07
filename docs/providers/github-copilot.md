@@ -1,18 +1,17 @@
 ---
-summary: "Sign in to GitHub Copilot from OpenClaw using the device flow"
+summary: "Sign in to GitHub Copilot from OpenClaw using the device flow or non-interactive token import"
 read_when:
   - You want to use GitHub Copilot as a model provider
   - You need the `openclaw models auth login-github-copilot` flow
+  - You are choosing between the built-in Copilot provider, Copilot SDK harness, and Copilot Proxy
 title: "GitHub Copilot"
 ---
 
-# GitHub Copilot
-
 GitHub Copilot is GitHub's AI coding assistant. It provides access to Copilot
 models for your GitHub account and plan. OpenClaw can use Copilot as a model
-provider in two different ways.
+provider or agent runtime in three different ways.
 
-## Two ways to use Copilot in OpenClaw
+## Three ways to use Copilot in OpenClaw
 
 <Tabs>
   <Tab title="Built-in provider (github-copilot)">
@@ -48,13 +47,55 @@ provider in two different ways.
 
   </Tab>
 
+  <Tab title="Copilot SDK harness plugin (copilot)">
+    Install the external `@openclaw/copilot` plugin when you want GitHub's
+    Copilot CLI and SDK to own the low-level agent loop for selected
+    `github-copilot/*` models.
+
+    ```bash
+    openclaw plugins install @openclaw/copilot
+    ```
+
+    Then opt a model or provider into the runtime:
+
+    ```json5
+    {
+      agents: {
+        defaults: {
+          model: "github-copilot/gpt-5.5",
+          models: {
+            "github-copilot/gpt-5.5": {
+              agentRuntime: { id: "copilot" },
+            },
+          },
+        },
+      },
+    }
+    ```
+
+    Choose this when you want native Copilot CLI sessions, SDK-managed thread
+    state, and Copilot-owned compaction for those agent turns. Without the
+    explicit `agentRuntime` opt-in, `github-copilot/*` models keep using the
+    built-in provider. See [Copilot SDK harness](/plugins/copilot) for the full
+    runtime contract.
+
+  </Tab>
+
   <Tab title="Copilot Proxy plugin (copilot-proxy)">
     Use the **Copilot Proxy** VS Code extension as a local bridge. OpenClaw talks to
-    the proxy's `/v1` endpoint and uses the model list you configure there.
+    the proxy's `/v1` endpoint (default `http://localhost:3000/v1`) and uses the
+    model list you configure.
+
+    The `copilot-proxy` plugin ships with OpenClaw and is enabled by default.
+    Configure the base URL and model ids with:
+
+    ```bash
+    openclaw models auth login --provider copilot-proxy --set-default
+    ```
 
     <Note>
     Choose this when you already run Copilot Proxy in VS Code or need to route
-    through it. You must enable the plugin and keep the VS Code extension running.
+    through it. The VS Code extension must stay running.
     </Note>
 
   </Tab>
@@ -62,18 +103,36 @@ provider in two different ways.
 
 ## Optional flags
 
-| Flag            | Description                                         |
-| --------------- | --------------------------------------------------- |
-| `--yes`         | Skip the confirmation prompt                        |
-| `--set-default` | Also apply the provider's recommended default model |
+| Command                                                                | Flag            | Description                                          |
+| ---------------------------------------------------------------------- | --------------- | ---------------------------------------------------- |
+| `openclaw models auth login-github-copilot`                            | `--yes`         | Overwrite an existing auth profile without prompting |
+| `openclaw models auth login --provider github-copilot --method device` | `--set-default` | Also apply the provider's recommended default model  |
 
 ```bash
-# Skip confirmation
+# Skip the re-login confirmation
 openclaw models auth login-github-copilot --yes
 
 # Login and set the default model in one step
 openclaw models auth login --provider github-copilot --method device --set-default
 ```
+
+## Non-interactive onboarding
+
+The device-login flow requires an interactive TTY. For headless setup, import
+an existing GitHub OAuth access token with `openclaw onboard --non-interactive`:
+
+```bash
+openclaw onboard --non-interactive --accept-risk \
+  --auth-choice github-copilot \
+  --github-copilot-token "$COPILOT_GITHUB_TOKEN" \
+  --skip-channels --skip-health
+```
+
+You can also omit `--auth-choice`; passing `--github-copilot-token` infers the
+GitHub Copilot provider auth choice. If the flag is omitted, onboarding falls
+back to `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, then `GITHUB_TOKEN`. Use
+`--secret-input-mode ref` with `COPILOT_GITHUB_TOKEN` set to store an env-backed
+`tokenRef` instead of plaintext in `auth-profiles.json`.
 
 <AccordionGroup>
   <Accordion title="Interactive TTY required">
@@ -83,13 +142,52 @@ openclaw models auth login --provider github-copilot --method device --set-defau
 
   <Accordion title="Model availability depends on your plan">
     Copilot model availability depends on your GitHub plan. If a model is
-    rejected, try another ID (for example `github-copilot/gpt-4.1`).
+    rejected, try another ID (for example `github-copilot/gpt-5.5`). See
+    GitHub's [supported models per Copilot plan](https://docs.github.com/en/copilot/reference/ai-models/supported-models#supported-ai-models-per-copilot-plan)
+    for the current model list.
+  </Accordion>
+
+  <Accordion title="Live catalog refresh from the Copilot API">
+    Once the device-login (or env-var) auth path has resolved a GitHub token,
+    OpenClaw refreshes the model catalog on demand from `${baseUrl}/models`
+    (the same endpoint VS Code Copilot uses) so the runtime tracks
+    per-account entitlement and accurate context windows without manifest
+    churn. Newly published Copilot models become visible without an OpenClaw
+    upgrade, and context windows reflect the real per-model limits
+    (e.g. 400k for the gpt-5.x series, 1M for the internal
+    `claude-opus-*-1m` variants).
+
+    The bundled static catalog stays as the visible fallback when discovery
+    is disabled, the user has no GitHub auth profile, the token-exchange
+    fails, or the `/models` HTTPS call errors. To opt out and rely entirely
+    on the static manifest catalog (offline / air-gapped scenarios):
+
+    ```json5
+    {
+      plugins: {
+        entries: {
+          "github-copilot": {
+            config: { discovery: { enabled: false } },
+          },
+        },
+      },
+    }
+    ```
+
   </Accordion>
 
   <Accordion title="Transport selection">
-    Claude model IDs use the Anthropic Messages transport automatically. GPT,
-    o-series, and Gemini models keep the OpenAI Responses transport. OpenClaw
-    selects the correct transport based on the model ref.
+    Claude model IDs use the Anthropic Messages transport automatically.
+    Gemini models use the OpenAI Chat Completions transport; GPT and o-series
+    models keep the OpenAI Responses transport. OpenClaw selects the correct
+    transport based on the model ref.
+  </Accordion>
+
+  <Accordion title="Request compatibility">
+    OpenClaw sends Copilot IDE-style request headers on Copilot transports
+    (VS Code editor/plugin versions and the `vscode-chat` integration id),
+    marks tool-result follow-up turns as agent-initiated, and sets the Copilot
+    vision header when a turn carries image input.
   </Accordion>
 
   <Accordion title="Environment variable resolution order">
@@ -110,16 +208,11 @@ openclaw models auth login --provider github-copilot --method device --set-defau
   </Accordion>
 
   <Accordion title="Token storage">
-    The login stores a GitHub token in the auth profile store and exchanges it
-    for a Copilot API token when OpenClaw runs. You do not need to manage the
-    token manually.
+    The login stores a GitHub token in the auth profile store (profile id
+    `github-copilot:github`) and exchanges it for a short-lived Copilot API
+    token when OpenClaw runs. You do not need to manage the token manually.
   </Accordion>
 </AccordionGroup>
-
-<Warning>
-Requires an interactive TTY. Run the login command directly in a terminal, not
-inside a headless script or CI job.
-</Warning>
 
 ## Memory search embeddings
 
@@ -127,14 +220,11 @@ GitHub Copilot can also serve as an embedding provider for
 [memory search](/concepts/memory-search). If you have a Copilot subscription and
 have logged in, OpenClaw can use it for embeddings without a separate API key.
 
-### Auto-detection
+### Config
 
-When `memorySearch.provider` is `"auto"` (the default), GitHub Copilot is tried
-at priority 15 -- after local embeddings but before OpenAI and other paid
-providers. If a GitHub token is available, OpenClaw discovers available
-embedding models from the Copilot API and picks the best one automatically.
-
-### Explicit config
+Set `memorySearch.provider` explicitly to use GitHub Copilot embeddings. If a
+GitHub token is available, OpenClaw discovers available embedding models from
+the Copilot API and picks the best one automatically.
 
 ```json5
 {
@@ -155,7 +245,8 @@ embedding models from the Copilot API and picks the best one automatically.
 1. OpenClaw resolves your GitHub token (from env vars or auth profile).
 2. Exchanges it for a short-lived Copilot API token.
 3. Queries the Copilot `/models` endpoint to discover available embedding models.
-4. Picks the best model (prefers `text-embedding-3-small`).
+4. Picks the best model (preference order: `text-embedding-3-small`,
+   `text-embedding-3-large`, `text-embedding-ada-002`).
 5. Sends embedding requests to the Copilot `/embeddings` endpoint.
 
 Model availability depends on your GitHub plan. If no embedding models are

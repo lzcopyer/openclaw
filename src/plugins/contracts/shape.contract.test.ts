@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+// Plugin shape contract tests cover manifest, API, and runtime export shapes.
 import {
   createPluginRegistryFixture,
   registerVirtualTestPlugin,
-} from "../../../test/helpers/plugins/contracts-testkit.js";
+} from "openclaw/plugin-sdk/plugin-test-contracts";
+import { describe, expect, it } from "vitest";
 import { buildPluginShapeSummary } from "../inspect-shape.js";
 
 describe("plugin shape compatibility matrix", () => {
@@ -94,6 +95,15 @@ describe("plugin shape compatibility matrix", () => {
       },
     });
 
+    registerVirtualTestPlugin({
+      registry,
+      config,
+      id: "document-extract-test",
+      name: "Document Extract Test",
+      contracts: { documentExtractors: ["pdf"] },
+      register() {},
+    });
+
     const report = {
       workspaceDir: "/virtual-workspace",
       ...registry.registry,
@@ -129,11 +139,22 @@ describe("plugin shape compatibility matrix", () => {
         shape: "plain-capability",
         capabilityMode: "plain",
       },
+      {
+        id: "document-extract-test",
+        shape: "plain-capability",
+        capabilityMode: "plain",
+      },
     ]);
 
     expect(inspect[0]?.usesLegacyBeforeAgentStart).toBe(true);
     expect(inspect.map((entry) => entry.capabilities.map((capability) => capability.kind))).toEqual(
-      [[], ["text-inference"], ["text-inference", "web-search"], ["channel"]],
+      [
+        [],
+        ["text-inference"],
+        ["text-inference", "web-search"],
+        ["channel"],
+        ["document-extractors"],
+      ],
     );
   });
 });
